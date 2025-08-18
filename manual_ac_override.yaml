@@ -8,7 +8,7 @@ blueprint:
     allowing scheduled automations to resume control.
   domain: automation
   input:
-    client_entity:
+    climate_entity:
       name: Target Climate Device
       description: The climate entity (thermostat) to monitor for manual changes.
       selector:
@@ -39,7 +39,7 @@ mode: restart
 trigger:
   # Trigger 1: The thermostat temperature is changed.
   - platform: state
-    entity_id: !input thermostat_entity
+    entity_id: !input climate_entity
     attribute: temperature
     id: "thermostat_changed"
     
