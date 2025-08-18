@@ -1,0 +1,79 @@
+blueprint:
+  name: Thermostat manual override handler
+  author: wkethman
+  description: >-
+    When a thermostat's temperature is changed manually by a user,
+    this automation activates an override toggle (input_boolean).
+    The toggle is automatically turned off after a specified duration,
+    allowing scheduled automations to resume control.
+  domain: automation
+  input:
+    client_entity:
+      name: Target Climate Device
+      description: The climate entity (thermostat) to monitor for manual changes.
+      selector:
+        entity:
+          domain: climate
+
+    override_toggle:
+      name: Override Toggle Helper
+      description: The input_boolean helper that acts as the override switch.
+      selector:
+        entity:
+          domain: input_boolean
+
+    override_duration_hours:
+      name: Override Duration (Hours)
+      description: How many hours the manual override should last before resetting.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 24
+          step: 1
+          unit_of_measurement: hours
+
+# This mode is crucial. If you manually change the temp again, it restarts the timer.
+mode: restart
+
+trigger:
+  # Trigger 1: The thermostat temperature is changed.
+  - platform: state
+    entity_id: !input thermostat_entity
+    attribute: temperature
+    id: "thermostat_changed"
+    
+  # Trigger 2: The override switch is turned on (so we can start the timer).
+  - platform: state
+    entity_id: !input override_toggle
+    to: "on"
+    id: "override_enabled"
+
+action:
+  - choose:
+      # Case 1: The thermostat was changed MANUALLY.
+      - conditions:
+          - condition: trigger
+            id: "thermostat_changed"
+          # This template ensures the change came from a user, not another automation.
+          - condition: template
+            value_template: "{{ trigger.to_state.context.user_id is not none }}"
+        sequence:
+          # Turn on the override switch. This will immediately re-trigger the automation
+          # and cause the "Case 2" block below to run.
+          - service: input_boolean.turn_on
+            target:
+              entity_id: !input override_toggle
+
+      # Case 2: The override switch was just turned on.
+      - conditions:
+          - condition: trigger
+            id: "override_enabled"
+        sequence:
+          # Wait for the specified duration.
+          - delay:
+              hours: !input override_duration_hours
+          # After the delay, turn the override switch back off.
+          - service: input_boolean.turn_off
+            target:
+              entity_id: !input override_toggle
