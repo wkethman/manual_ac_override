@@ -2,10 +2,14 @@ blueprint:
   name: Thermostat manual override handler
   author: wkethman
   description: >-
-    When a thermostat's temperature is changed manually by a user,
-    this automation activates an override toggle (input_boolean).
-    The toggle is automatically turned off after a specified duration,
-    allowing scheduled automations to resume control.
+    When a user manually changes the thermostat temperature, this automation
+    turns on an override toggle (input_boolean) and (re)starts a countdown held
+    in an input_timer helper for the specified duration. When the timer
+    finishes, the toggle is turned off and scheduled automations resume
+    control. Because the countdown lives in the timer helper rather than in
+    an in-automation delay, repeated manual adjustments RESET the countdown
+    (they no longer cancel it), and the countdown re-arms if Home Assistant
+    restarts mid-override.
   domain: automation
   input:
     climate_entity:
@@ -22,6 +26,16 @@ blueprint:
         entity:
           domain: input_boolean
 
+    override_timer:
+      name: Override Countdown Timer
+      description: >-
+        An input_timer helper that holds the override countdown. Each manual
+        temperature change (re)starts it; it is also re-armed on Home
+        Assistant startup if the override is still active.
+      selector:
+        entity:
+          domain: input_timer
+
     override_duration_hours:
       name: Override Duration (Hours)
       description: How many hours the manual override should last before resetting.
@@ -33,47 +47,98 @@ blueprint:
           step: 1
           unit_of_measurement: hours
 
-# This mode is crucial. If you manually change the temp again, it restarts the timer.
-mode: restart
+# Runs are short (no blocking delays), so 'single' is safe. Crucially, a
+# device-side thermostat attribute change can no longer cancel a pending
+# countdown, which is what made the previous delay-based version stick
+# the toggle 'on' indefinitely.
+mode: single
 
 trigger:
-  # Trigger 1: The thermostat temperature is changed.
+  # Trigger 1: The thermostat temperature attribute changed (device or user).
   - platform: state
     entity_id: !input climate_entity
     attribute: temperature
     id: "thermostat_changed"
-    
-  # Trigger 2: The override switch is turned on (so we can start the timer).
+
+  # Trigger 2: The override switch is manually turned on.
   - platform: state
     entity_id: !input override_toggle
     to: "on"
     id: "override_enabled"
 
+  # Trigger 3: The countdown timer finished (starting -> idle).
+  - platform: state
+    entity_id: !input override_timer
+    to: "idle"
+    id: "timer_finished"
+
+  # Trigger 4: Home Assistant restarted. If the override is still active but
+  # no timer is running (e.g. HA restarted mid-countdown), re-arm the timer
+  # so the override cannot stay on forever.
+  - platform: event
+    event_type: homeassistant_started
+    id: "ha_started"
+
 action:
   - choose:
-      # Case 1: The thermostat was changed MANUALLY.
+      # Case 1: The thermostat was changed MANUALLY (by a user).
       - conditions:
           - condition: trigger
             id: "thermostat_changed"
-          # This template ensures the change came from a user, not another automation.
+          # This template ensures the change came from a user, not another
+          # automation or the device itself.
           - condition: template
             value_template: "{{ trigger.to_state.context.user_id is not none }}"
         sequence:
-          # Turn on the override switch. This will immediately re-trigger the automation
-          # and cause the "Case 2" block below to run.
+          # Turn on the override switch.
           - service: input_boolean.turn_on
             target:
               entity_id: !input override_toggle
+          # (Re)start the countdown. A second manual change resets the timer
+          # instead of cancelling the countdown.
+          - service: timer.start
+            target:
+              entity_id: !input override_timer
+            data:
+              duration:
+                hours: !input override_duration_hours
 
-      # Case 2: The override switch was just turned on.
+      # Case 2: The override switch was just turned on manually.
       - conditions:
           - condition: trigger
             id: "override_enabled"
         sequence:
-          # Wait for the specified duration.
-          - delay:
-              hours: !input override_duration_hours
-          # After the delay, turn the override switch back off.
+          - service: timer.start
+            target:
+              entity_id: !input override_timer
+            data:
+              duration:
+                hours: !input override_duration_hours
+
+      # Case 3: The countdown finished -> release the override.
+      - conditions:
+          - condition: trigger
+            id: "timer_finished"
+        sequence:
           - service: input_boolean.turn_off
             target:
               entity_id: !input override_toggle
+
+      # Case 4: HA restarted with the override still active but no running
+      # timer -> give it a fresh countdown window so it self-heals.
+      - conditions:
+          - condition: trigger
+            id: "ha_started"
+          - condition: state
+            entity_id: !input override_toggle
+            state: "on"
+          - condition: state
+            entity_id: !input override_timer
+            state: "idle"
+        sequence:
+          - service: timer.start
+            target:
+              entity_id: !input override_timer
+            data:
+              duration:
+                hours: !input override_duration_hours
