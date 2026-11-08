@@ -6,6 +6,20 @@ turned on for a set duration so scheduled automations (e.g. an AC
 setpoint controller) stand down. When the countdown ends, the toggle is
 turned off and automation resumes.
 
+## Ground truth & deployment
+
+This repository is the ground truth for the blueprint. The Home Assistant
+live copy (`wkethman/manual_ac_override.yaml`) is a deployment artifact:
+
+- Make changes **here**, then deploy to HA with
+  `ha_manage_blueprints(action="save", path="wkethman/manual_ac_override.yaml",
+  yaml=<file content>, overwrite=true)` (the blueprint save API re-serializes
+  the file — HA strips comments and normalizes selector fields, so the live
+  copy will never be byte-identical; that is expected).
+- Do not edit the blueprint in the HA UI; any UI-only change must be
+  back-ported here.
+- The current version is in `blueprint.description` (v2.1).
+
 ## Changelog
 
 ### v2.1 (2026-11-08)
