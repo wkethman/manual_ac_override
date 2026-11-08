@@ -2,14 +2,18 @@ blueprint:
   name: Thermostat manual override handler
   author: wkethman
   description: >-
-    When a user manually changes the thermostat temperature, this automation
-    turns on an override toggle (input_boolean) and (re)starts a countdown held
-    in an input_timer helper for the specified duration. When the timer
-    finishes, the toggle is turned off and scheduled automations resume
-    control. Because the countdown lives in the timer helper rather than in
-    an in-automation delay, repeated manual adjustments RESET the countdown
-    (they no longer cancel it), and the countdown re-arms if Home Assistant
-    restarts mid-override.
+    v2.1 - Manual AC override handler. When a user manually changes the
+    thermostat's target temperature (or turns the override toggle on), this
+    automation turns the override toggle on and (re)starts the countdown held
+    in an input_timer helper. When the timer finishes, the toggle is turned
+    off and the scheduled AC automation resumes control. Repeated manual
+    changes RESET the countdown; it also re-arms if Home Assistant restarts
+    mid-override.
+    Changelog: v2.1 (2026-11-08) versioned description. v2.0 (2026-11-08)
+    replaced the in-automation delay with an input_timer helper so device-side
+    temperature changes can no longer cancel the countdown (the old version
+    could stick the toggle on indefinitely); repeated manual changes reset the
+    window, and the countdown re-arms after a Home Assistant restart.
   domain: automation
   input:
     climate_entity:

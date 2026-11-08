@@ -8,6 +8,10 @@ turned off and automation resumes.
 
 ## Changelog
 
+### v2.1 (2026-11-08)
+- Versioned, self-documenting `description` field (what the blueprint does +
+  changelog), so the automation UI shows the version and how it works.
+
 ### v2.0 (2026-11-08) — countdown moved to an `input_timer`
 The previous version held the countdown as an in-automation `delay` under
 `mode: restart`. Any device-initiated change of the thermostat's
